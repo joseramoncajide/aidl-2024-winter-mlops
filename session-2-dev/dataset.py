@@ -15,7 +15,6 @@ class MyDataset(Dataset):
     def __len__(self):
         return len(self.labels_df)
 
-
     def __getitem__(self, idx):
         suite_id, sample_id, code, value, character = self.labels_df.loc[idx, :]
         path = os.path.join(self.images_path, f"input_{suite_id}_{sample_id}_{code}.jpg")
@@ -37,38 +36,54 @@ images_path = '/workspace/aidl-2024-winter-mlops/datasets/data/data'  # Replace 
 # Create an instance of your custom dataset
 dataset = MyDataset(labels_path=labels_path, images_path=images_path, transform=data_transform)
 
-print(dataset.labels_df)
-print(dataset[14995])
+print(dataset.labels_df.head(3))
+print(dataset.labels_df.loc[0, :].values.tolist())
+print(dataset[0])
+sample, label = dataset[0]
+print(f" * label={label}")
+import matplotlib.pyplot as plt
+plt.figure(figsize=(6, 6))
+plt.imshow(sample.squeeze(), cmap="gray")
+plt.title(f'label = {label}')
+plt.show()
+plt.savefig(f'sample_image.png')
 
 # Split the dataset into train, validation, and test sets
 from torch.utils.data import random_split
 split_sizes = [10000, 2500, 2500]
 train_dataset, val_dataset, test_dataset  = random_split(dataset, split_sizes)
 
-print("=== DATASET ===")
-print(len(train_dataset))
-print(len(val_dataset))
-print(len(test_dataset))
-print("=== / DATASET ===")
+print("datasets lenghts:")
+print(f"* train_dataset={len(train_dataset)}")
+print(f"* val_dataset={len(val_dataset)}")
+print(f"* test_dataset={len(test_dataset)}")
+
 
 from torch.utils.data import DataLoader
 
 train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True)
 val_dataloader = DataLoader(val_dataset, batch_size=4, shuffle=True)
 test_dataloader = DataLoader(test_dataset, batch_size=2, shuffle=True)
-print(len(train_dataloader.dataset))
+print("DataLoader lenghts:")
+print(f"* train_dataset={len(train_dataloader.dataset)}")
+print(f"* val_dataloader={len(val_dataloader.dataset)}")
+print(f"* test_dataloader={len(test_dataloader.dataset)}")
+
 
 # Display image and label.
 import matplotlib.pyplot as plt
 train_features, train_labels = next(iter(train_dataloader))
-print(f"Feature batch shape: {train_features.size()}")
-print(f"Labels batch shape: {train_labels.size()}")
+print("Train DataLoader")
+print(f"* Feature batch shape: {train_features.size()}")
+print(f"* Labels batch shape: {train_labels.size()}")
 img = train_features[0].squeeze()
 label = train_labels[0]
+plt.figure(figsize=(6, 6))
 plt.imshow(img, cmap="gray")
+plt.title(f'label = {label}')
 plt.show()
-plt.savefig('sample_image.png')
-print(f"Label: {label}")
+plt.savefig(f'sample_image_from_dataloader.png')
+print(f"* DataLoader image Label: {label}")
 
 # ok
 # for batch_idx, (data, target) in enumerate(test_dataloader):
@@ -79,7 +94,7 @@ print(f"Label: {label}")
 import os
 from filelock import FileLock
 
-def get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size):
+def get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size, num_workers):
 
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
@@ -88,45 +103,46 @@ def get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size):
 
         train_loader = DataLoader(
             train_dataset,
-            num_workers=4,
+            num_workers=num_workers,
             batch_size=batch_size,
             shuffle=True)
 
         val_loader = DataLoader(
             val_dataset,
-            num_workers=4,
+            num_workers=num_workers,
             batch_size=batch_size,
             shuffle=True)
 
         test_loader = DataLoader(
             test_dataset,
-            num_workers=4,
+            num_workers=num_workers,
             batch_size=batch_size,
             shuffle=True)
     
     return train_loader, val_loader, test_loader
 
-train_dataloader, val_dataloader, test_dataloader  = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = 4)
-print("===")
-print(len(test_dataloader.dataset))
-print(len(test_dataloader.dataset) / 4) # batch_size = 4
-print(len(test_dataloader))
-
+train_dataloader, val_dataloader, test_dataloader  = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = 4, num_workers=4)
+print("[A] test_dataloader from get_data_loaders() lenghts:")
+print(f"* test_dataloader.dataset={len(test_dataloader.dataset)}")
+print(f"* test_dataloader.dataset/batch_size={len(test_dataloader.dataset) / 4}")
+print(f"* test_dataloader={len(test_dataloader)}")
 del test_dataloader
 
+
 test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=True)
-print("===")
-print(len(test_dataloader.dataset))
-print(len(test_dataloader.dataset) / 4) # batch_size = 4
-print(len(test_dataloader))
+print("[B] test_dataloader from DataLoader lenghts:")
+print(f"* test_dataloader.dataset={len(test_dataloader.dataset)}")
+print(f"* test_dataloader.dataset/batch_size={len(test_dataloader.dataset) / 4}")
+print(f"* test_dataloader={len(test_dataloader)}")
 
 
+print("test_dataloader exec:")
 images = []
 for batch_idx, (data, target) in enumerate(test_dataloader):
     # print(f"Labels batch shape (2): {target.size()}")
     # print(data)
     # print(f"Target (2)= {target}")
-    images.append(batch_idx)
+    images.append(target.data.numpy().tolist())
 
-print("===")
-print(len(images))
+print(f"* num images proccesed={len(images)}")
+print(images[:10])
