@@ -35,4 +35,6 @@ cd session-2
 pip install -r requirements.txt
 pip install pandas
 pip install torchvision
+pip install scikit-learn
+pip install seaborn
 ```

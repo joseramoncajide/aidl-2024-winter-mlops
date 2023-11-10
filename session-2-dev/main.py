@@ -9,6 +9,16 @@ from dataset import MyDataset
 from model import MyModel
 from utils import accuracy, save_model
 
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+
+import pandas as pd
+import numpy as np
+
+import os
+from filelock import FileLock
+
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 # Define a transform (you can customize it as needed)
@@ -17,30 +27,40 @@ data_transform = transforms.Compose([transforms.ToTensor()])
 
 
 def get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size):
-    train_loader = DataLoader(
-        train_dataset.dataset,
-        batch_size=batch_size,
-        shuffle=True)
 
-    val_loader = DataLoader(
-        val_dataset.dataset,
-        batch_size=batch_size,
-        shuffle=False)
+    # We add FileLock here because multiple workers will want to
+    # download data, and this may cause overwrites since
+    # DataLoader is not threadsafe.
+    with FileLock(os.path.expanduser("~/data.lock")):
 
-    test_loader = DataLoader(
-        test_dataset.dataset,
-        batch_size=batch_size,
-        shuffle=False)
+        train_loader = DataLoader(
+            train_dataset,
+            num_workers=4,
+            batch_size=batch_size,
+            shuffle=True)
+
+        val_loader = DataLoader(
+            val_dataset,
+            num_workers=4,
+            batch_size=batch_size,
+            shuffle=False)
+
+        test_loader = DataLoader(
+            test_dataset,
+            num_workers=4,
+            batch_size=batch_size,
+            shuffle=False)
     
     return train_loader, val_loader, test_loader
 
 
-def train_single_epoch(model, optimizer, train_loader, device=None):
+def train_single_epoch(model, optimizer, data_loader, device=None):
     device = device or torch.device("cpu")
     criterion = nn.CrossEntropyLoss()
     model.train()
     losses = []
-    for batch_idx, (data, target) in enumerate(train_loader):
+    total_loss = 0.0
+    for batch_idx, (data, target) in enumerate(data_loader):
         #if batch_idx * len(data) > EPOCH_SIZE:
         #    return
         data, target = data.to(device), target.to(device)
@@ -52,6 +72,9 @@ def train_single_epoch(model, optimizer, train_loader, device=None):
         optimizer.step()
         losses.append(loss.item())
         # loss_history.append(loss.item())
+        total_loss += loss.item()
+
+    return total_loss / len(data_loader)
 
 
 def eval_single_epoch(model, data_loader, device=None):
@@ -59,57 +82,75 @@ def eval_single_epoch(model, data_loader, device=None):
     model.eval()
     correct = 0
     total = 0
+    correct_predictions = 0
+    total_loss = 0.0
+    total_samples = 0
+
+    all_targets = []
+    all_predictions = []
+
+    conf_matrix = np.zeros((15,15))
 
     with torch.no_grad():
         for batch_idx, (data, target) in enumerate(data_loader):
             #if batch_idx * len(data) > TEST_SIZE:
             #    break
             data, target = data.to(device), target.to(device)
+            
+            # outputs = model(data)
+            # _, predicted = torch.max(outputs.data, 1)
+            # total += target.size(0)
+            # correct += (predicted == target).sum().item()
+
             outputs = model(data)
-            _, predicted = torch.max(outputs.data, 1)
-            total += target.size(0)
-            correct += (predicted == target).sum().item()
+            criterion = nn.CrossEntropyLoss()
+            loss = criterion(outputs, target)
+
+            total_loss += loss.item()
+
+            _, predicted = torch.max(outputs, 1)
+            correct_predictions += (predicted == target).sum().item()
+            total_samples += target.size(0)
+            total_loss += loss.item()
+
+            all_targets.extend(target.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
+
+            for i in range(target.size(0)):
+                label = target.data[i]
+                # Update confusion matrix
+                conf_matrix[label][predicted.data[i]] += 1
+
+    y_pred = pd.Series(all_predictions, name='Predicted')
+    y_actu = pd.Series(all_targets, name='Actual')
+    cm = pd.crosstab(y_actu, y_pred)
     
     #return correct / total
-    print(f'* correct/total={correct / total}')
-    acc = accuracy(labels=target, outputs=outputs.data)
-    print(f'* acc={acc}')
+    #print(f'* correct/total={correct / total}')
+    accuracy_val = accuracy(labels=target, outputs=outputs.data)
+    print(f'* acc={accuracy_val}')
+    avg_loss = total_loss / len(data_loader)
+    print(f'* avg_loss={avg_loss}')
 
-    return acc
+    #new!!!
+    from sklearn.metrics import accuracy_score
+    print("accuracy_score")
+    accuracy_val = accuracy_score(y_actu, y_pred)
+    print(f'* acc2={accuracy_val}')
 
-def _accuracy(network, data_loader):
-  """
-  This function computes accuracy
-  """
-  #  setting model state
-  network.eval()
-  
-  #  instantiating counters
-  total_correct = 0
-  total_instances = 0
+    return avg_loss, accuracy_val, all_targets, all_predictions, conf_matrix, cm
 
-  #  iterating through batches
-  with torch.no_grad():
-    for batch_idx, (images, labels) in enumerate(data_loader):
-      images, labels = images.to(device), labels.to(device)
 
-      #-------------------------------------------------------------------------
-      #  making classifications and deriving indices of maximum value via argmax
-      #-------------------------------------------------------------------------
-      classifications = torch.argmax(network(images), dim=1)
+def plot_confusion_matrix(targets, predictions, num_classes):
+    cm = confusion_matrix(targets, predictions)
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=np.arange(1, num_classes + 1),
+                yticklabels=np.arange(1, num_classes + 1))
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix")
+    plt.show()
 
-      #--------------------------------------------------
-      #  comparing indicies of maximum values and labels
-      #--------------------------------------------------
-      correct_predictions = sum(classifications==labels).item()
-
-      #------------------------
-      #  incrementing counters
-      #------------------------
-      total_correct+=correct_predictions
-      total_instances+=len(images)
-      print(f'* acc={round(total_correct/total_instances, 3)}')
-  return round(total_correct/total_instances, 3)
 
 def train_model(config):
     
@@ -124,7 +165,7 @@ def train_model(config):
     split_sizes = [10000, 2500, 2500]
     train_dataset, val_dataset, test_dataset  = random_split(dataset, split_sizes)
 
-    train_loader, test_loader, val_loader = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = 100)
+    train_loader, val_loader, test_loader  = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = 64)
 
     model = MyModel(num_classes=15, num_units=500).to(device)
 
@@ -132,20 +173,166 @@ def train_model(config):
         model.parameters(), lr=config["lr"], momentum=config["momentum"]
     )
 
-    for epoch in range(config["epochs"]):
-        print(f"Epoch {epoch+1}/{config['epochs']}")
-        train_single_epoch(model = model, optimizer = optimizer, train_loader = train_loader)
-        acc = _accuracy(model, test_loader)
-        #acc = eval_single_epoch(model=model, data_loader=test_loader)
+    train_losses = []
+    val_losses = []
+    accuracies = []
+    all_targets = []
+    all_predictions = []
 
-    return acc
+    for epoch in range(config["epochs"]):
+        
+        train_loss = train_single_epoch(model = model, optimizer = optimizer, data_loader = train_loader)
+        # acc = _accuracy(model, test_loader)
+        eval_loss, accuracy_val, targets, predictions, conf_matrix, cm = eval_single_epoch(model=model, data_loader=val_loader)
+
+        print(f"Epoch {epoch+1}/{config['epochs']}")
+        print(" Confusion Matrix: \n \n",  cm )
+        print(f"  Train Loss: {train_loss:.4f}")
+        print(f"  Eval Loss: {eval_loss:.4f} | Accuracy: {accuracy_val:.2%}")
+
+        train_losses.append(train_loss)
+        val_losses.append(eval_loss)
+        accuracies.append(accuracy_val)
+        all_targets.extend(targets)
+        all_predictions.extend(predictions)
+
+    print(train_losses)
+    print(val_losses)
+
+    # Plotting
+    plt.figure(figsize=(12, 4))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(range(1, config["epochs"] + 1), train_losses, label="Train Loss")
+    plt.plot(range(1, config["epochs"] + 1), val_losses, label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(range(1, config["epochs"] + 1), accuracies, label="Accuracy")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+    plt.savefig('metrics.png')
+
+    def __plot_confusion_matrix(targets, predictions, num_classes):
+        cm = confusion_matrix(targets, predictions)
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+        plt.title("Confusion Matrix (Validation)")
+        plt.show()
+
+    def plot_confusion_matrix(targets, predictions, num_classes):
+        cm = confusion_matrix(targets, predictions)
+        # plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=np.arange(1, num_classes + 1),
+                yticklabels=np.arange(1, num_classes + 1))
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+        plt.title("Confusion Matrix (Validation)")
+        # plt.show()
+
+    # Plot confusion matrix
+    # plt.subplot(1, 3, 3)
+    # labels = list(range(0,15,1))  # Assuming 15 labels
+    # plot_confusion_matrix(all_targets, all_predictions, labels)
+    # plt.savefig('cm1.png')
+
+    # # plt.savefig('cm1.png')
+
+    # plt.subplots(figsize=(10,9))
+    # ax = sns.heatmap(conf_matrix, annot=True, vmax=20)
+    # ax.set_xlabel('Predicted');
+    # ax.set_ylabel('True');
+    # plt.savefig('cm2.png')
+
+    # conf_matrix = cm.to_numpy()
+
+    # fig, ax = plt.subplots(figsize=(10,5))
+    # im = ax.imshow(conf_matrix)
+
+    # ax.set_xticks(np.arange(15))
+    # ax.set_yticks(np.arange(15))
+
+    # for i in range(conf_matrix.shape[0]):
+    #     for j in range(conf_matrix.shape[1]):
+    #         text = ax.text(j, i, conf_matrix[i, j],
+    #                     ha="center", va="center", color="w")
+            
+    # ax.set_xlabel('Actual targets')
+    # ax.set_ylabel('Predicted targets')
+    # ax.set_title('Confusion Matrix')
+    # plt.savefig('cm3.png')
+
+
+
+
+    plt.figure(figsize=(8, 6))
+    plot_confusion_matrix(targets, predictions, num_classes=config["num_classes"])
+    plt.savefig('cm4.png')
+
+
+    
+    predictions = np.empty((0, len(test_dataset)), np.int32)
+    actualValues = np.empty((0, len(test_dataset)), np.int32)
+
+    print("//////////////")
+    print(len(test_dataset))
+
+    test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=True)
+    with torch.no_grad():
+        for batch_idx, (data, target) in enumerate(test_loader):
+            data, target = data.to(device), target.to(device)
+
+            outputs = model(data)
+
+            _, predicted = torch.max(outputs, 1)
+
+            predictions = np.append(predictions, predicted)
+            actualValues = np.append(actualValues, target)
+
+    print(f'* predictions={len(predictions)}')
+    print(f'* outpactualValuesuts={len(actualValues)}')
+    # accuracy_test = accuracy(labels=actualValues, outputs=predictions)
+    # print(f'* accuracy_test={accuracy_test}')
+    print(confusion_matrix(actualValues, predictions))
+    from sklearn.metrics import accuracy_score
+    print("accuracy_score")
+    print(accuracy_score(actualValues, predictions))
+
+    # plot_confusion_matrix(actualValues, predictions, num_classes=15)
+    # plt.savefig('cm5.png')
+
+    accuracy_test = accuracy(labels=target, outputs=outputs.data)
+    print(f'* labels={len(target)}')
+    print(f'* outputs={len(outputs.data)}')
+    print(f'* accuracy_test={accuracy_test}')
+
+    plt.figure(figsize=(8, 6))
+    plot_confusion_matrix(actualValues, predictions, num_classes=config["num_classes"])
+    plt.savefig('cm_test.png')
+
+    return model
+
+
+
+
 
 
 if __name__ == "__main__":
 
     config = {
+        "batch_size": 64,
         "lr": 0.1,
         "momentum": 0.1,
-        "epochs": 10
+        "epochs": 15,
+        "num_classes": 15
     }
     train_model(config)
