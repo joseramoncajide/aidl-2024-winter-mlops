@@ -30,8 +30,8 @@ from torchvision import transforms
 data_transform = transforms.Compose([transforms.ToTensor()])
 
 # Specify the path to the CSV file and the root directory of the images
-labels_path = '/workspace/aidl-2024-winter-mlops/datasets/chinese_mnist.csv'  # Replace with the actual path
-images_path = '/workspace/aidl-2024-winter-mlops/datasets/data/data'  # Replace with the actual path
+labels_path = '/workspaces/aidl-2024-winter-mlops/datasets/chinese_mnist.csv'  # Replace with the actual path
+images_path = '/workspaces/aidl-2024-winter-mlops/datasets/data/data'  # Replace with the actual path
 
 # Create an instance of your custom dataset
 dataset = MyDataset(labels_path=labels_path, images_path=images_path, transform=data_transform)

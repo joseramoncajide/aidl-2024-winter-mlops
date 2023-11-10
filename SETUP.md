@@ -1,7 +1,20 @@
 # Environment setup
 
+Mac
 ```
 brew install pyenv
+```
+
+Linux
+```
+pyenv update
+curl https://pyenv.run | bash
+# Follow the instructions and modify ~/.bashrc
+source ~/.bashrc
+```
+
+All
+```
 pyenv install -v 3.8
 pyenv local 3.8
 python -m venv .venv
@@ -21,9 +34,16 @@ mkdir -p datasets
 
 
 # Upload kaggle.json to /home/gitpod/.kaggle
+
+# For GitPod
 mkdir -p /home/gitpod/.kaggle
 mv kaggle.json /home/gitpod/.kaggle
 chmod 600 /home/gitpod/.kaggle/kaggle.json
+
+# For GitHub
+mkdir -p /home/codespace/.kaggle
+mv kaggle.json /home/codespace/.kaggle
+chmod 600 /home/codespace/.kaggle/kaggle.json
 
 kaggle datasets download -d gpreda/chinese-mnist -p datasets
 cd datasets
