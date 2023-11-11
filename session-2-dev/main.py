@@ -19,14 +19,14 @@ import numpy as np
 import os
 from filelock import FileLock
 
+from sklearn.metrics import accuracy_score
+
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 # Define a transform (you can customize it as needed)
-from torchvision import transforms
 data_transform = transforms.Compose([transforms.ToTensor()])
 
-
-def get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size):
+def get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size, num_workers):
 
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
@@ -35,24 +35,23 @@ def get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size):
 
         train_loader = DataLoader(
             train_dataset,
-            num_workers=4,
+            num_workers=num_workers,
             batch_size=batch_size,
             shuffle=True)
 
         val_loader = DataLoader(
             val_dataset,
-            num_workers=4,
+            num_workers=num_workers,
             batch_size=batch_size,
-            shuffle=False)
+            shuffle=True)
 
         test_loader = DataLoader(
             test_dataset,
-            num_workers=4,
+            num_workers=num_workers,
             batch_size=batch_size,
-            shuffle=False)
+            shuffle=True)
     
     return train_loader, val_loader, test_loader
-
 
 def train_single_epoch(model, optimizer, data_loader, device=None):
     device = device or torch.device("cpu")
@@ -61,21 +60,16 @@ def train_single_epoch(model, optimizer, data_loader, device=None):
     losses = []
     total_loss = 0.0
     for batch_idx, (data, target) in enumerate(data_loader):
-        #if batch_idx * len(data) > EPOCH_SIZE:
-        #    return
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        # loss = F.nll_loss(output, target)
         loss = criterion(output, target)
         loss.backward()
         optimizer.step()
         losses.append(loss.item())
-        # loss_history.append(loss.item())
         total_loss += loss.item()
 
     return total_loss / len(data_loader)
-
 
 def eval_single_epoch(model, data_loader, device=None):
     device = device or torch.device("cpu")
@@ -93,19 +87,10 @@ def eval_single_epoch(model, data_loader, device=None):
 
     with torch.no_grad():
         for batch_idx, (data, target) in enumerate(data_loader):
-            #if batch_idx * len(data) > TEST_SIZE:
-            #    break
             data, target = data.to(device), target.to(device)
-            
-            # outputs = model(data)
-            # _, predicted = torch.max(outputs.data, 1)
-            # total += target.size(0)
-            # correct += (predicted == target).sum().item()
-
             outputs = model(data)
             criterion = nn.CrossEntropyLoss()
             loss = criterion(outputs, target)
-
             total_loss += loss.item()
 
             _, predicted = torch.max(outputs, 1)
@@ -127,16 +112,14 @@ def eval_single_epoch(model, data_loader, device=None):
     
     #return correct / total
     #print(f'* correct/total={correct / total}')
-    accuracy_val = accuracy(labels=target, outputs=outputs.data)
-    print(f'* acc={accuracy_val}')
+    
+    # accuracy_val = accuracy(labels=target, outputs=outputs.data)
+    # print(f'* acc={accuracy_val}')
     avg_loss = total_loss / len(data_loader)
-    print(f'* avg_loss={avg_loss}')
+    # print(f'* avg_loss={avg_loss}')
 
-    #new!!!
-    from sklearn.metrics import accuracy_score
-    print("accuracy_score")
     accuracy_val = accuracy_score(y_actu, y_pred)
-    print(f'* acc2={accuracy_val}')
+    # print(f'* accuracy_score={accuracy_val}')
 
     return avg_loss, accuracy_val, all_targets, all_predictions, conf_matrix, cm
 
@@ -152,11 +135,23 @@ def plot_confusion_matrix(targets, predictions, num_classes):
     plt.show()
 
 
+def __plot_confusion_matrix(targets, predictions, num_classes):
+    cm = confusion_matrix(targets, predictions)
+    # plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=np.arange(1, num_classes + 1),
+            yticklabels=np.arange(1, num_classes + 1))
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("Confusion Matrix (Validation)")
+    # plt.show()
+
+
 def train_model(config):
     
     # Specify the path to the CSV file and the root directory of the images
-    labels_path = '/workspace/aidl-2024-winter-mlops/datasets/chinese_mnist.csv'  # Replace with the actual path
-    images_path = '/workspace/aidl-2024-winter-mlops/datasets/data/data'  # Replace with the actual path
+    labels_path = '/workspaces/aidl-2024-winter-mlops/datasets/chinese_mnist.csv'  # Replace with the actual path
+    images_path = '/workspaces/aidl-2024-winter-mlops/datasets/data/data'  # Replace with the actual path
 
     # Create an instance of your custom dataset
     dataset = MyDataset(labels_path=labels_path, images_path=images_path, transform=data_transform)
@@ -165,9 +160,9 @@ def train_model(config):
     split_sizes = [10000, 2500, 2500]
     train_dataset, val_dataset, test_dataset  = random_split(dataset, split_sizes)
 
-    train_loader, val_loader, test_loader  = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = 64)
+    train_loader, val_loader, test_loader  = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = config["batch_size"], num_workers=4)
 
-    model = MyModel(num_classes=15, num_units=500).to(device)
+    model = MyModel(num_classes=config["num_classes"], num_units=config["num_units"]).to(device)
 
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"]
@@ -182,13 +177,14 @@ def train_model(config):
     for epoch in range(config["epochs"]):
         
         train_loss = train_single_epoch(model = model, optimizer = optimizer, data_loader = train_loader)
-        # acc = _accuracy(model, test_loader)
+
         eval_loss, accuracy_val, targets, predictions, conf_matrix, cm = eval_single_epoch(model=model, data_loader=val_loader)
 
         print(f"Epoch {epoch+1}/{config['epochs']}")
         print(" Confusion Matrix: \n \n",  cm )
         print(f"  Train Loss: {train_loss:.4f}")
         print(f"  Eval Loss: {eval_loss:.4f} | Accuracy: {accuracy_val:.2%}")
+        print("\n")
 
         train_losses.append(train_loss)
         val_losses.append(eval_loss)
@@ -196,8 +192,8 @@ def train_model(config):
         all_targets.extend(targets)
         all_predictions.extend(predictions)
 
-    print(train_losses)
-    print(val_losses)
+    # print(train_losses)
+    # print(val_losses)
 
     # Plotting
     plt.figure(figsize=(12, 4))
@@ -218,26 +214,6 @@ def train_model(config):
     plt.tight_layout()
     plt.show()
     plt.savefig('metrics.png')
-
-    def __plot_confusion_matrix(targets, predictions, num_classes):
-        cm = confusion_matrix(targets, predictions)
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-        plt.xlabel("Predicted")
-        plt.ylabel("True")
-        plt.title("Confusion Matrix (Validation)")
-        plt.show()
-
-    def plot_confusion_matrix(targets, predictions, num_classes):
-        cm = confusion_matrix(targets, predictions)
-        # plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
-        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=np.arange(1, num_classes + 1),
-                yticklabels=np.arange(1, num_classes + 1))
-        plt.xlabel("Predicted")
-        plt.ylabel("True")
-        plt.title("Confusion Matrix (Validation)")
-        # plt.show()
 
     # Plot confusion matrix
     # plt.subplot(1, 3, 3)
@@ -271,22 +247,21 @@ def train_model(config):
     # ax.set_title('Confusion Matrix')
     # plt.savefig('cm3.png')
 
-
-
-
     plt.figure(figsize=(8, 6))
     plot_confusion_matrix(targets, predictions, num_classes=config["num_classes"])
-    plt.savefig('cm4.png')
+    plt.savefig('confusion_matrix.png')
 
+    print("Model evaluation on test data:")
 
-    
-    predictions = np.empty((0, len(test_dataset)), np.int32)
-    actualValues = np.empty((0, len(test_dataset)), np.int32)
+    # predictions = np.empty((0, len(test_dataset)), np.int32)
+    # actual_values = np.empty((0, len(test_dataset)), np.int32)
+    # print(f'** num expected predictions={len(predictions)}')
 
-    print("//////////////")
-    print(len(test_dataset))
+    # test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=True)
 
-    test_dataloader = DataLoader(test_dataset, batch_size=16, shuffle=True)
+    all_targets = []
+    all_predictions = []
+
     with torch.no_grad():
         for batch_idx, (data, target) in enumerate(test_loader):
             data, target = data.to(device), target.to(device)
@@ -295,36 +270,33 @@ def train_model(config):
 
             _, predicted = torch.max(outputs, 1)
 
-            predictions = np.append(predictions, predicted)
-            actualValues = np.append(actualValues, target)
+            # predictions = np.append(predictions, predicted)
+            # actual_values = np.append(actual_values, target)
 
-    print(f'* predictions={len(predictions)}')
-    print(f'* outpactualValuesuts={len(actualValues)}')
-    # accuracy_test = accuracy(labels=actualValues, outputs=predictions)
+            all_targets.extend(target.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
+
+    # print(f'*** num collected predictions={len(predictions)}')
+    # print(f'*** num actual_values={len(actual_values)}')
+    # accuracy_test = accuracy(labels=actual_values, outputs=predictions)
     # print(f'* accuracy_test={accuracy_test}')
-    print(confusion_matrix(actualValues, predictions))
-    from sklearn.metrics import accuracy_score
-    print("accuracy_score")
-    print(accuracy_score(actualValues, predictions))
+    print(confusion_matrix(all_targets, all_predictions))
+    # print(f"* accuracy_score={accuracy_score(actual_values, predictions)}")
+    print(f"** accuracy_score={accuracy_score(all_targets, all_predictions)}")
 
-    # plot_confusion_matrix(actualValues, predictions, num_classes=15)
+    # plot_confusion_matrix(actual_values, predictions, num_classes=15)
     # plt.savefig('cm5.png')
 
-    accuracy_test = accuracy(labels=target, outputs=outputs.data)
-    print(f'* labels={len(target)}')
-    print(f'* outputs={len(outputs.data)}')
-    print(f'* accuracy_test={accuracy_test}')
+    # accuracy_test = accuracy(labels=target, outputs=outputs.data)
+    # print(f'* labels={len(target)}')
+    # print(f'* outputs={len(outputs.data)}')
+    # print(f'* accuracy_test={accuracy_test}')
 
     plt.figure(figsize=(8, 6))
-    plot_confusion_matrix(actualValues, predictions, num_classes=config["num_classes"])
-    plt.savefig('cm_test.png')
+    plot_confusion_matrix(all_targets, all_predictions, num_classes=config["num_classes"])
+    plt.savefig('confusion_matrix_test_dataset.png')
 
     return model
-
-
-
-
-
 
 if __name__ == "__main__":
 
@@ -332,7 +304,8 @@ if __name__ == "__main__":
         "batch_size": 64,
         "lr": 0.1,
         "momentum": 0.1,
-        "epochs": 15,
-        "num_classes": 15
+        "epochs": 12,
+        "num_classes": 15,
+        "num_units": 500
     }
     train_model(config)
