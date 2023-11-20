@@ -19,7 +19,7 @@ from ray.train import Checkpoint
 from ray.tune.schedulers import ASHAScheduler
 
 from filelock import FileLock
-
+from sklearn.metrics import accuracy_score
 
 
 class MyModel(nn.Module):
@@ -70,7 +70,7 @@ class MyModel(nn.Module):
         return x
 
     
-from dataset_v2 import MyDataset
+from dataset_functional import MyDataset
 
 
 def get_data_loaders(train_dataset, val_dataset, batch_size=64, num_workers=2):
@@ -124,7 +124,10 @@ def train_chinese_mnist(config):
     # else:
     #     device = torch.device("cpu")
 
-    device = torch.device("mps")
+    # device = torch.device("mps")
+    device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+    print('Using device:', device)
+    print()
 
     net.to(device)
 
@@ -149,6 +152,9 @@ def train_chinese_mnist(config):
     for epoch in range(config["epochs"]):  # loop over the dataset multiple times
         running_loss = 0.0
         epoch_steps = 0
+        net.train()
+        losses = []
+        total_loss = 0.0
         for i, data in enumerate(train_loader, 0):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
@@ -165,6 +171,11 @@ def train_chinese_mnist(config):
 
             # print statistics
             running_loss += loss.item()
+
+            losses.append(loss.item())
+            total_loss += loss.item()
+
+            # ???
             epoch_steps += 1
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print("[%d, %5d] loss: %.3f" % (epoch + 1, i + 1,
@@ -176,6 +187,14 @@ def train_chinese_mnist(config):
         val_steps = 0
         total = 0
         correct = 0
+
+        all_targets = []
+        all_predictions = []
+
+        net.eval()
+
+        # total_loss = 0.0
+
         for i, data in enumerate(val_loader, 0):
             with torch.no_grad():
                 inputs, labels = data
@@ -191,6 +210,11 @@ def train_chinese_mnist(config):
                 val_loss += loss.cpu().numpy()
                 val_steps += 1
 
+                # total_loss += loss.item()
+
+                all_targets.extend(labels.cpu().numpy())
+                all_predictions.extend(predicted.cpu().numpy())
+
         # Here we save a checkpoint. It is automatically registered with
         # Ray Tune and can be accessed through `train.get_checkpoint()`
         # API in future iterations.
@@ -198,12 +222,24 @@ def train_chinese_mnist(config):
         torch.save(
             (net.state_dict(), optimizer.state_dict()), "my_model/checkpoint.pt")
         checkpoint = Checkpoint.from_directory("my_model")
-        train.report({"loss": (val_loss / val_steps), "accuracy": correct / total}, checkpoint=checkpoint)
+        # train.report({"loss": (val_loss / val_steps), "accuracy": correct / total}, checkpoint=checkpoint)
+
+        #new
+        y_pred = pd.Series(all_predictions, name='Predicted')
+        y_actu = pd.Series(all_targets, name='Actual')
+        accuracy_val = accuracy_score(y_actu, y_pred)
+
+        avg_loss = val_loss / len(val_loader)
+
+        # train.report({"loss": (val_loss / val_steps), "accuracy": accuracy_val}, checkpoint=checkpoint)
+        train.report({"loss": avg_loss, "accuracy": accuracy_val}, checkpoint=checkpoint)
 
         # ????
-        return {"loss": (val_loss / val_steps), "accuracy": correct / total}
+        # return {"loss": (val_loss / val_steps), "accuracy": correct / total}
+        # return {"loss": (val_loss / val_steps), "accuracy": accuracy_val}
+    return {"loss": avg_loss, "accuracy": accuracy_val}
 
-    print("Finished Training")
+    # print("Finished Training")
 
 
 def test_best_model(best_result, config):
@@ -223,6 +259,8 @@ def test_best_model(best_result, config):
     model_state, optimizer_state = torch.load(checkpoint_path)
     best_trained_model.load_state_dict(model_state)
 
+    best_trained_model.eval()
+
     # trainset, testset = load_data()
     _, _, test_dataset = load_data()
 
@@ -234,6 +272,10 @@ def test_best_model(best_result, config):
 
     correct = 0
     total = 0
+
+    all_targets = []
+    all_predictions = []
+
     with torch.no_grad():
         for data in test_loader:
             images, labels = data
@@ -244,7 +286,12 @@ def test_best_model(best_result, config):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
+            all_targets.extend(labels.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
+
     print("Best trial test set accuracy: {}".format(correct / total))
+    #print(f"** accuracy_score={accuracy_score(all_targets, all_predictions)}")
+    print("Best trial test set accuracy: {}".format(accuracy_score(all_targets, all_predictions)))
 
 
 
@@ -271,12 +318,12 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     tuner = tune.Tuner(
         tune.with_resources(
             tune.with_parameters(train_chinese_mnist),
-            resources={"cpu": 4, "gpu": gpus_per_trial}
+            resources={"cpu": 6, "gpu": gpus_per_trial}
         ),
         tune_config=tune.TuneConfig(
             metric="loss",
             mode="min",
-            scheduler=scheduler,
+            # scheduler=scheduler,
             num_samples=num_samples,
         ),
         param_space=config,
@@ -295,4 +342,4 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 
 
 if __name__ == "__main__":
-    main(num_samples=2, max_num_epochs=12, gpus_per_trial=0)
+    main(num_samples=6, max_num_epochs=12, gpus_per_trial=0)

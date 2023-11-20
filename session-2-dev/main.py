@@ -21,7 +21,11 @@ from filelock import FileLock
 
 from sklearn.metrics import accuracy_score
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+
+print('Using device:', device)
+print()
 
 # Define a transform (you can customize it as needed)
 data_transform = transforms.Compose([transforms.ToTensor()])
@@ -132,7 +136,7 @@ def plot_confusion_matrix(targets, predictions, num_classes):
     plt.xlabel("Predicted")
     plt.ylabel("True")
     plt.title("Confusion Matrix")
-    plt.show()
+    # plt.show()
 
 
 def __plot_confusion_matrix(targets, predictions, num_classes):
@@ -150,8 +154,8 @@ def __plot_confusion_matrix(targets, predictions, num_classes):
 def train_model(config):
     
     # Specify the path to the CSV file and the root directory of the images
-    labels_path = '/workspaces/aidl-2024-winter-mlops/datasets/chinese_mnist.csv'  # Replace with the actual path
-    images_path = '/workspaces/aidl-2024-winter-mlops/datasets/data/data'  # Replace with the actual path
+    labels_path = '../datasets/chinese_mnist.csv'  # Replace with the actual path
+    images_path = '../datasets/data/data'  # Replace with the actual path
 
     # Create an instance of your custom dataset
     dataset = MyDataset(labels_path=labels_path, images_path=images_path, transform=data_transform)
@@ -176,9 +180,9 @@ def train_model(config):
 
     for epoch in range(config["epochs"]):
         
-        train_loss = train_single_epoch(model = model, optimizer = optimizer, data_loader = train_loader)
+        train_loss = train_single_epoch(model = model, optimizer = optimizer, data_loader = train_loader, device=device)
 
-        eval_loss, accuracy_val, targets, predictions, conf_matrix, cm = eval_single_epoch(model=model, data_loader=val_loader)
+        eval_loss, accuracy_val, targets, predictions, conf_matrix, cm = eval_single_epoch(model=model, data_loader=val_loader, device=device)
 
         print(f"Epoch {epoch+1}/{config['epochs']}")
         print(" Confusion Matrix: \n \n",  cm )
@@ -212,7 +216,7 @@ def train_model(config):
     plt.legend()
 
     plt.tight_layout()
-    plt.show()
+    # plt.show()
     plt.savefig('metrics.png')
 
     # Plot confusion matrix
