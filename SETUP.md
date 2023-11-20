@@ -45,6 +45,11 @@ mkdir -p /home/codespace/.kaggle
 mv kaggle.json /home/codespace/.kaggle
 chmod 600 /home/codespace/.kaggle/kaggle.json
 
+# For local
+mkdir -p /Users/jcajidefernandez/.kaggle
+mv kaggle.json /Users/jcajidefernandez/.kaggle
+chmod 600 /Users/jcajidefernandez/.kaggle/kaggle.json
+
 kaggle datasets download -d gpreda/chinese-mnist -p datasets
 cd datasets
 unzip chinese-mnist.zip    
@@ -57,4 +62,6 @@ pip install pandas
 pip install torchvision
 pip install scikit-learn
 pip install seaborn
+pip install -U "ray[data,train,tune,serve]"
+pip install tensorboard
 ```
