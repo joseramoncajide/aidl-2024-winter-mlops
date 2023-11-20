@@ -96,7 +96,7 @@ def eval_single_epoch(model, val_loader):
 
 def train_model(config):
 
-    train_dataset, val_dataset, test_dataset = load_data()
+#    train_dataset, val_dataset, test_dataset = load_data()
 
     train_loader, val_loader, test_loader = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = config["batch_size"], num_workers=4)
 
@@ -137,7 +137,7 @@ def train_model(config):
 
 def test_best_model(best_result):
 
-    train_dataset, val_dataset, test_dataset = load_data()
+    # train_dataset, val_dataset, test_dataset = load_data()
 
     _, _, test_loader = get_data_loaders(train_dataset, val_dataset, test_dataset, batch_size = config["batch_size"], num_workers=4)
 
@@ -160,13 +160,15 @@ def test_best_model(best_result):
 
 if __name__ == "__main__":
 
+    train_dataset, val_dataset, test_dataset = load_data()
+
     config = {
         "lr": tune.loguniform(1e-4, 1e-2),
         "batch_size": 64,
         "epochs": 10,
         "num_classes": 15,
-        "num_units": 500,
-        # "num_units": tune.randint(400, 500),
+        # "num_units": 500,
+        "num_units": tune.randint(400, 500),
     }
     scheduler = ASHAScheduler(metric="val_acc", mode="max")
     
@@ -179,7 +181,7 @@ if __name__ == "__main__":
             # metric="val_acc",
             # mode="max",
             scheduler=scheduler,
-            num_samples=4,
+            num_samples=6,
         ),
         param_space=config,
     )
