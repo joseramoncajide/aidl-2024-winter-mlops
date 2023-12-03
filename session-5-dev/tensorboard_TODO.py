@@ -50,8 +50,6 @@ class TensorboardLogger(Logger):
             # grid = torchvision.utils.make_grid(reconstruction_grid)
             self.writer.add_image('images', reconstruction_grid, 0)
             
-
-
         # # TODO: Log the weights values and grads histograms.
         # #  Tip: use f"{name}/value" and f"{name}/grad" as tags
         # for name, weight in model.encoder.named_parameters():
