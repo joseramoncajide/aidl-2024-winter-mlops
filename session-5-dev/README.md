@@ -39,3 +39,9 @@ python main.py --task reconstruction --log_framework tensorboard --latent_dims 6
 4. Then do the same for the classification task.
 5. Repeat steps 2, 3 and 4, but this time using the WandB framework. The only thing that won't be logged is the graph of the model.
 6. [OPTIONAL] If you have time, try to do something similar to what is done in [this report](https://wandb.ai/juanjo3ns/mnist_colab/reports/MNIST_COLAB--Vmlldzo1MDIxOTE). Feel free to innovate.
+
+## Results
+
+**Tensorboard**
+
+![Tensorboard](tensorboard.png "Tensorboard")
