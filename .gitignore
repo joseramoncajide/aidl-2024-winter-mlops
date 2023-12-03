@@ -164,3 +164,6 @@ session-5/data/
 
 
 datasets/
+
+session-5-dev/data/*
+session-5-dev/logs/*

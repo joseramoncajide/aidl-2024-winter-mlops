@@ -65,3 +65,28 @@ pip install seaborn
 pip install -U "ray[data,train,tune,serve]"
 pip install tensorboard
 ```
+
+## Session 5
+```
+cd session-5-dev
+
+brew install xz
+pyenv versions
+# https://stackoverflow.com/questions/59690698/modulenotfounderror-no-module-named-lzma-when-building-python-using-pyenv-on
+pyenv uninstall 3.10.6
+pyenv install 3.10.6
+
+# Specific env
+pyenv local 3.10.6
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+**Execution**
+```
+tensorboard --logdir=logs
+python main.py --task reconstruction --log_framework tensorboard
+python main.py --task classification --log_framework tensorboard
+```
