@@ -90,3 +90,19 @@ tensorboard --logdir=logs
 python main.py --task reconstruction --log_framework tensorboard
 python main.py --task classification --log_framework tensorboard
 ```
+
+## Session 6
+```
+docker build -t session6 .
+podman build -t session6 --platform linux/amd64 .
+
+podman run -v
+
+podman ps
+
+podman exec -it session6 /bin/bash
+
+podman run -v $(pwd)/data:/data -v $(pwd)/checkpoints:/checkpoints -it session6 train 
+
+podman run -v $(pwd)/data/:/data -v $(pwd)/checkpoints:/checkpoints -it session6 predict 0.24522,0,9.9,0,0.544,5.782,71.7,4.0317,4,304,18.4,396.9,15.94
+```

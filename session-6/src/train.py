@@ -45,7 +45,7 @@ def test_epoch(dataloader: DataLoader, model, criterion):
 
 
 def load_data():
-    df = pd.read_csv("data/housing.csv")
+    df = pd.read_csv("/data/housing.csv")
     train_df, test_df = train_test_split(df, test_size=0.2)
     train_X, train_y = train_df.drop(["ID", "MEDV"], axis=1), train_df["MEDV"]
     test_X, test_y = test_df.drop(["ID", "MEDV"], axis=1), test_df["MEDV"]

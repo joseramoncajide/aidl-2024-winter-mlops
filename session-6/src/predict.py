@@ -29,5 +29,5 @@ def predict(input_features: List[float]):
     print(f"The predicted price is: ${output.item()*1000:.2f}")
 
 # Example usage:
-input_features = [0.24522,0,9.9,0,0.544,5.782,71.7,4.0317,4,304,18.4,396.9,15.94]  # Replace with your actual input features
-predict(input_features)
+# input_features = [0.24522,0,9.9,0,0.544,5.782,71.7,4.0317,4,304,18.4,396.9,15.94]  # Replace with your actual input features
+# predict(input_features)
